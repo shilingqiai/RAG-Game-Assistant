@@ -1,0 +1,82 @@
+[
+    {
+        "title": "Genshin Impact - Overview",
+        "content": "Genshin Impact is an open-world action role-playing game developed and published by HoYoverse. Set in the fantasy world of Teyvat, players assume the role of the Traveler, an interstellar adventurer who is separated from their twin sibling and must embark on a journey across seven nations to find them and uncover the world's deep secrets."
+    },
+    {
+        "title": "Teyvat",
+        "content": "Teyvat is a vast, magical world divided into seven distinct nations: Mondstadt, Liyue, Inazuma, Sumeru, Fontaine, Natlan, and Snezhnaya. Each nation is associated with a specific element and ruled by a god known as an Archon. The landscapes vary wildly, from windswept plains and towering stone forests to deep underwater realms and volcanic terrains."
+    },
+    {
+        "title": "Visions and Gnoses",
+        "content": "In Teyvat, a Vision is a magical gemstone granted by the gods to individuals with strong ambitions, allowing them to channel elemental power. The Archons themselves possess a higher form of this power called a Gnosis, which directly connects them to Celestia, the realm of the divine hovering above the world."
+    },
+    {
+        "title": "The Seven Archons",
+        "content": "The Seven Archons are the supreme gods presiding over the nations of Teyvat. Key figures include Venti (Anemo), Zhongli (Geo), the Raiden Shogun (Electro), Nahida (Dendro), Furina/Neuvillette (Hydro), and Mavuika (Pyro). They are powerful entities who guide their people and hold the highest authority in their respective domains."
+    },
+    {
+        "title": "Stormterror Dvalin",
+        "content": "Stormterror Dvalin is the first major Weekly Boss players encounter. Once one of the Four Winds protecting Mondstadt, the dragon was corrupted by abyssal poison and manipulation by the Abyss Order. The Traveler must fight him in the ruins of Old Mondstadt to purify his corruption."
+    },
+    {
+        "title": "Tartaglia (Childe)",
+        "content": "Tartaglia, also known as Childe, is the Eleventh of the Fatui Harbingers and the major boss of the Liyue storyline. He is a battle-hungry warrior who wields both Hydro and Electro powers through his Delusion. His multi-phase boss fight in the Golden House is a significant early-game challenge."
+    },
+    {
+        "title": "Raiden Shogun",
+        "content": "The Raiden Shogun is the Electro Archon of Inazuma. Driven by a desire for unchanging Eternity, she initiated the Vision Hunt Decree to seize all Visions in her nation. Her boss fight inside the Plane of Euthymia is intensely difficult, requiring players to dodge lightning-fast strikes and survive her ultimate attacks."
+    },
+    {
+        "title": "Shouki no Kami, the Prodigal",
+        "content": "Shouki no Kami is an artificial god created by the Fatui using the Electro Archon's Gnosis and the Balladeer, Scaramouche. Located in Sumeru, this massive mechanical boss requires the player to use a special Neo Akasha Terminal to break his shields and survive devastating area-of-effect elemental barrages."
+    },
+    {
+        "title": "The Knave (Arlecchino)",
+        "content": "Arlecchino, the Fourth of the Fatui Harbingers, serves as a formidable endgame boss. She utilizes a unique mechanics called the Bond of Life, which prevents the player from healing. Her aggressive attack patterns, high mobility, and blood-fire scythe make her one of the most punishing encounters in the game."
+    },
+    {
+        "title": "Azhdaha",
+        "content": "Azhdaha is an ancient Earth Dragon and a former ally of Zhongli, the Geo Archon. Over time, erosion caused him to lose his memories and go mad, leading to his imprisonment beneath an ancient tree in Liyue. His boss fight features massive area-of-effect attacks and the ability to absorb different elements during the battle."
+    },
+    {
+        "title": "Elements",
+        "content": "Genshin Impact features a combat system based on seven elements: Anemo (Wind), Geo (Earth), Electro (Lightning), Dendro (Nature), Hydro (Water), Pyro (Fire), and Cryo (Ice). Every playable character possesses one of these elements, dictating their abilities and role in a team."
+    },
+    {
+        "title": "Weapons and Artifacts",
+        "content": "Characters can equip one of five weapon types: Sword, Claymore, Polearm, Bow, or Catalyst. Additionally, players equip Artifacts—sets of magical gear that boost stats like Attack, Critical Rate, and Elemental Mastery. Equipping 2-piece or 4-piece sets grants powerful passive bonuses essential for endgame combat."
+    },
+    {
+        "title": "Skills and Bursts",
+        "content": "Instead of traditional spells, each character has an Elemental Skill (which operates on a cooldown) and an Elemental Burst (a powerful ultimate ability requiring Energy). Mastering the rotation of these abilities across a four-character team is the core of Genshin Impact's combat loop."
+    },
+    {
+        "title": "The Wish System (Gacha)",
+        "content": "To acquire new characters and powerful weapons, players use the 'Wish' system. By spending Primogems (the premium currency), players can roll on limited-time event banners. The system includes a pity mechanic, ensuring a high-rarity 5-star character or weapon after a set number of wishes."
+    },
+    {
+        "title": "Exploration Tips",
+        "content": "Teyvat is designed for vertical and expansive exploration. Players can climb almost any surface, glide from high altitudes using a wind glider, and swim across bodies of water. Managing the stamina bar is crucial. Players should also actively seek out Oculi hidden in the world to upgrade the Statues of The Seven for rewards."
+    },
+    {
+        "title": "Combat Tips (Elemental Reactions)",
+        "content": "Combat revolves around Elemental Reactions. Applying two different elements to an enemy triggers powerful effects. For example, applying Hydro then Pyro causes 'Vaporize' for double damage, while Dendro and Hydro create 'Bloom' seeds that explode. Building teams whose elements synergize perfectly is the key to victory."
+    },
+    {
+        "title": "The Abyss Order",
+        "content": "The Abyss Order is one of the primary antagonistic factions in the game. Composed of monsters and corrupted beings, they seek to overthrow the divine rule of Celestia and the Seven Archons. The Traveler's lost sibling is mysteriously deeply involved with the leadership of this dark organization."
+    },
+    {
+        "title": "The Fatui",
+        "content": "The Fatui are a powerful military and diplomatic organization from the icy nation of Snezhnaya, fiercely loyal to the Cryo Archon, the Tsaritsa. Led by the Eleven Harbingers, they operate across all nations in Teyvat, often using deceit, force, and manipulation to collect the Gnoses of the other Archons for an unknown master plan."
+    },
+    {
+        "title": "Spiral Abyss",
+        "content": "The Spiral Abyss is the ultimate endgame challenge in Genshin Impact. It is a massive, multi-floor dungeon that requires players to defeat waves of high-level enemies within strict time limits. The deepest floors (9 through 12) reset twice a month, requiring players to build two fully optimized teams to conquer them."
+    },
+    {
+        "title": "Quests and Storylines",
+        "content": "The game's narrative is divided into several types. Archon Quests progress the main storyline of the Traveler searching for their sibling. Story Quests dive into the personal histories of 5-star characters, while Hangout Events offer visual-novel style interactions with 4-star characters. World Quests provide massive amounts of deep, localized lore for each region."
+    }
+]

@@ -6,9 +6,17 @@ game/
 # 忽略缓存和编译文件
 __pycache__/
 *.pyc
+.pytest_cache/
 
 # 忽略本地向量数据库（让别人拉取代码后自己重新生成）
 storage/
+
+# 忽略用户数据（本地生成）
+user_profile.db
+user_profile.json
+
+# 忽略 IDE 配置
+.trae/
 
 # 忽略环境变量和 API Key（绝对不能传！）
 .env
