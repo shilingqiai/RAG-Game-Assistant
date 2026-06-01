@@ -3,11 +3,17 @@ import logging
 import os
 import sys
 
+# 代理配置（从环境变量读取，不硬编码。需要时：set HTTP_PROXY=http://127.0.0.1:12451）
+
 # 统一日志配置（在所有模块之前执行）
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
     datefmt="%H:%M:%S",
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler("paimon.log", encoding="utf-8"),
+    ],
 )
 
 from llama_index.core import Settings
@@ -25,7 +31,7 @@ def _patch_settings():
         try:
             # 在模块导入时即注入 LLM 和嵌入模型，防止 LlamaIndex 回退到 OpenAI
             Settings.embed_model = DashScopeEmbedding(
-                model_name="text-embedding-v3",
+                model_name="text-embedding-v2",
                 api_key=api_key,
                 embed_batch_size=10,
             )
@@ -53,7 +59,7 @@ class LLMManager:
             print("[LLM] 警告: DASHSCOPE_API_KEY 环境变量未设置！")
             print("[LLM] 请设置: export DASHSCOPE_API_KEY='你的阿里云DashScope API Key'")
 
-        # 主 LLM（用于 Agent 推理和回答生成，qwen-max 有更好的 function calling 能力）
+        # 主 LLM（qwen-plus-2025-12-01）
         self.llm = DashScope(
             model_name="qwen-max",
             temperature=0.1,
@@ -66,7 +72,7 @@ class LLMManager:
             Settings.embed_model
             if Settings.embed_model
             else DashScopeEmbedding(
-                model_name="text-embedding-v3",
+                model_name="text-embedding-v2",
                 api_key=api_key,
                 embed_batch_size=10,
             )
