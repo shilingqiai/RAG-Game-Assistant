@@ -10,6 +10,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 import llm_manager  # noqa
+from config import AppConfig
 
 from llama_index.core import Document, VectorStoreIndex
 from llama_index.core.ingestion import IngestionPipeline
@@ -87,7 +88,7 @@ def build_cn_index(documents: list[Document], storage_dir: str = "./storage_cn")
     """构建中文向量索引"""
     api_key = os.getenv("DASHSCOPE_API_KEY")
     embed_model = DashScopeEmbedding(
-        model_name="text-embedding-v3", api_key=api_key, embed_batch_size=10,
+        model_name=AppConfig.EMBED_MODEL, api_key=api_key, embed_batch_size=10,
     )
 
     pipeline = IngestionPipeline(transformations=[

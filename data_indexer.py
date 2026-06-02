@@ -1,119 +1,123 @@
-import json
-import os
-import re
-import sys
+"""数据索引构建器 — 从 characters.txt + world_lore.txt 构建向量索引"""
+import os, re, sys
 
-# Fix Windows encoding
 os.environ["PYTHONIOENCODING"] = "utf-8"
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-import dashscope
 from llama_index.core import (
     VectorStoreIndex,
     Document,
     StorageContext,
     load_index_from_storage,
 )
+from llama_index.core.text_splitter import SentenceSplitter
+from llama_index.embeddings.dashscope import DashScopeEmbedding
+from config import AppConfig
 
 
-def load_game_data(file_path: str) -> list:
-    with open(file_path, "r", encoding="utf-8") as f:
-        return json.load(f)
+def _split_entries(text: str) -> list[str]:
+    """按 --- 分隔符拆分条目（允许前后有空白行）"""
+    return [block.strip() for block in re.split(r'\n{0,2}---\n{0,2}', text) if block.strip()]
 
 
-def clean_text(text: str) -> str:
-    text = text.strip()
-    text = " ".join(text.split())
-    return text
+def _load_characters(path: str) -> list[Document]:
+    """加载角色文本，每个角色一个 Document"""
+    with open(path, encoding="utf-8") as f:
+        raw = f.read()
+
+    docs = []
+    for block in _split_entries(raw):
+        # 提取角色名作为 title
+        title_match = re.search(r'^角色[：:]\s*(.+)', block, re.MULTILINE)
+        title = title_match.group(1).strip() if title_match else "Unknown"
+
+        docs.append(Document(
+            text=block,
+            metadata={"title": title, "category": "character", "source": "rag_texts"},
+        ))
+    print(f"  Characters: {len(docs)} documents")
+    return docs
 
 
-def split_by_sentences(text: str) -> list[str]:
-    sentence_endings = re.compile(r'(?<=[.!?])\s+')
-    sentences = sentence_endings.split(text)
-    sentences = [s.strip() for s in sentences if s.strip()]
-    return sentences
+def _load_world_lore(path: str) -> list[Document]:
+    """加载世界观文本，每个条目一个 Document"""
+    with open(path, encoding="utf-8") as f:
+        raw = f.read()
+
+    docs = []
+    for block in _split_entries(raw):
+        title_match = re.search(r'^标题[：:]\s*(.+)', block, re.MULTILINE)
+        title = title_match.group(1).strip() if title_match else "Unknown"
+
+        docs.append(Document(
+            text=block,
+            metadata={"title": title, "category": "lore", "source": "rag_texts"},
+        ))
+    print(f"  World lore: {len(docs)} documents")
+    return docs
 
 
-def create_documents(game_data: list) -> list[Document]:
-    documents = []
-    for item in game_data:
-        title = clean_text(item.get("title", ""))
-        content = clean_text(item.get("content", ""))
-        
-        text = f"{title}\n\n{content}"
-        
-        doc = Document(
-            text=text,
-            metadata={
-                "title": title,
-                "source": "genshin_impact_lore.json",
-                "category": item.get("category", "general"),
-                "sentence_count": len(split_by_sentences(content)),
-            }
-        )
-        documents.append(doc)
-    return documents
+def build_index(documents: list[Document], storage_dir: str = "./storage") -> VectorStoreIndex:
+    """构建或加载向量索引"""
+    api_key = os.getenv("DASHSCOPE_API_KEY")
 
-
-def build_index(
-    documents: list[Document], storage_dir: str = "./storage"
-) -> VectorStoreIndex:
     if os.path.exists(storage_dir) and os.listdir(storage_dir):
+        print(f"Loading existing index: {storage_dir}")
         storage_context = StorageContext.from_defaults(persist_dir=storage_dir)
         index = load_index_from_storage(storage_context)
-        print(f"✅ 加载已存在的索引: {storage_dir}")
-    else:
-        from llama_index.embeddings.dashscope import DashScopeEmbedding
-        
-        dashscope.api_key = os.getenv("DASHSCOPE_API_KEY")
-        
-        embed_model = DashScopeEmbedding(
-            model_name="text-embedding-v3",
-            api_key=os.getenv("DASHSCOPE_API_KEY"),
-            embed_batch_size=10,
-        )
-        
-        print("🔧 初始化智能文本切分器 (chunk_size=512, chunk_overlap=128, min_sentences=1)...")
-        
-        from llama_index.core.text_splitter import SentenceSplitter
-        
-        text_splitter = SentenceSplitter(
-            chunk_size=512,
-            chunk_overlap=128,
-        )
-        
-        index = VectorStoreIndex.from_documents(
-            documents,
-            embed_model=embed_model,
-            transformations=[text_splitter],
-            show_progress=True,
-        )
-        index.storage_context.persist(persist_dir=storage_dir)
-        print(f"✅ 创建并保存新索引到: {storage_dir}")
+        print(f"Loaded index: {len(index.docstore.docs)} nodes")
+        return index
+
+    embed_model = DashScopeEmbedding(
+        model_name=AppConfig.EMBED_MODEL,
+        api_key=api_key,
+        embed_batch_size=10,
+    )
+
+    text_splitter = SentenceSplitter(chunk_size=512, chunk_overlap=128)
+
+    print(f"Building new index ({AppConfig.EMBED_MODEL}) from {len(documents)} documents...")
+    index = VectorStoreIndex.from_documents(
+        documents,
+        embed_model=embed_model,
+        transformations=[text_splitter],
+        show_progress=True,
+    )
+    index.storage_context.persist(persist_dir=storage_dir)
+    print(f"Index saved: {storage_dir}")
     return index
 
 
 def main():
-    data_path = "./data/genshin_impact_lore.json"
+    data_dir = "./data/rag_texts"
     storage_dir = "./storage"
 
-    os.makedirs(storage_dir, exist_ok=True)
-
-    if not os.path.exists(data_path):
-        print(f"❌ 错误: 数据文件不存在: {data_path}")
+    if not os.path.exists(data_dir):
+        print(f"Data dir not found: {data_dir}")
         return
 
-    print("📥 加载游戏数据...")
-    game_data = load_game_data(data_path)
-    
-    print("📝 创建文档对象...")
-    documents = create_documents(game_data)
-    
-    print(f"🔄 处理 {len(documents)} 个文档...")
-    index = build_index(documents, storage_dir)
+    chars_path = os.path.join(data_dir, "characters.txt")
+    lore_path = os.path.join(data_dir, "world_lore.txt")
 
-    print(f"\n🎉 成功处理 {len(documents)} 个文档")
+    documents = []
+    if os.path.exists(chars_path):
+        documents.extend(_load_characters(chars_path))
+    else:
+        print(f"Missing: {chars_path}")
+
+    if os.path.exists(lore_path):
+        documents.extend(_load_world_lore(lore_path))
+    else:
+        print(f"Missing: {lore_path}")
+
+    if not documents:
+        print("No documents to index!")
+        return
+
+    print(f"Total documents: {len(documents)}")
+    index = build_index(documents, storage_dir)
+    print(f"Done! Nodes in index: {len(index.docstore.docs)}")
 
 
 if __name__ == "__main__":

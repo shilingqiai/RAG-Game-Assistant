@@ -12,6 +12,7 @@ from llama_index.core.ingestion import IngestionPipeline
 from llama_index.core.extractors import KeywordExtractor
 from llama_index.core.text_splitter import SentenceSplitter
 from llama_index.embeddings.dashscope import DashScopeEmbedding
+from config import AppConfig
 
 # ── 中文名称映射（英文 wiki 名 → 简体中文名）─────────────────
 
@@ -183,7 +184,7 @@ def build_bilingual_index(documents: list[Document], storage_dir: str = "./stora
 
     api_key = os.getenv("DASHSCOPE_API_KEY")
     embed_model = DashScopeEmbedding(
-        model_name="text-embedding-v3",
+        model_name=AppConfig.EMBED_MODEL,
         api_key=api_key,
         embed_batch_size=10,
     )

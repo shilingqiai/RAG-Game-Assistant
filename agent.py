@@ -1,197 +1,225 @@
-"""Agent — 意图路由 + RAG + 工具调用"""
-import datetime, json, logging
+"""Agent — 手搓三步：意图路由 → 执行工具 → LLM 合成（无 FunctionAgent）"""
+import datetime, logging, sys, time
 from typing import AsyncGenerator, List, Optional
 
-from llama_index.core.agent import FunctionAgent
-from llama_index.core.tools import FunctionTool
 from llama_index.core.base.llms.types import ChatMessage, MessageRole
-from llama_index.core.agent.workflow import AgentStream, ToolCall, ToolCallResult
 
-from config import UserProfile
+from config import UserProfile, AppConfig
 from llm_manager import LLMManager
 
 logger = logging.getLogger("paimon.agent")
-MAX_HISTORY_TURNS = 20
+
+
+def _ts() -> str:
+    """当前时间戳字符串，用于控制台输出"""
+    return datetime.datetime.now().strftime("%H:%M:%S")
 
 
 class GameAgent:
     def __init__(self, llm_manager: LLMManager, user_profile: UserProfile,
                  extra_tools=None, query_engine=None):
-        self.llm_manager = llm_manager
+        self.llm = llm_manager.llm
         self.user_profile = user_profile
         self.query_engine = query_engine
-        self._tools = self._create_tools() + (extra_tools or [])
         self.chat_history: List[ChatMessage] = []
 
-        # 意图路由器（qwen-mt-flash — 1M free tokens，极快极便宜）
+        # 意图路由器
         from llama_index.llms.dashscope import DashScope
-        self.router_llm = DashScope(model_name="qwen-mt-flash", temperature=0,
-                                     api_key=llm_manager.llm.api_key, max_tokens=10)
+        self.router = DashScope(model_name=AppConfig.ROUTER_MODEL, temperature=0,
+                                api_key=llm_manager.llm.api_key, max_tokens=10)
+        print(f"[{_ts()}] 🤖 Agent 就绪 | RAG={'✅ 已加载' if query_engine else '⚠️ 未加载（仅聊天模式）'}",
+              flush=True)
 
-        # 工具 Agent（仅 asset 意图使用）
-        self._function_agent = FunctionAgent(
-            name="Paimon", system_prompt=self._system_prompt(),
-            tools=self._tools, llm=llm_manager.llm,
-        )
-        logger.info("Agent ready: %d tools, RAG=%s", len(self._tools), query_engine is not None)
+    # ── 工具函数 ──────────────────────────────────────────────
 
-    # ── 工具 ──────────────────────────────────────────────────
+    def _get_profile(self) -> str:
+        result = self.user_profile.format_for_display()
+        print(f"[{_ts()}]    📊 资产查询完成", flush=True)
+        return result
 
-    def _create_tools(self):
-        def get_user_profile() -> str:
-            """获取当前用户游戏资产"""
-            return self.user_profile.format_for_display()
+    def _update_assets(self, asset_type: str, amount: int) -> str:
+        return self.user_profile.update_assets(asset_type, amount)
 
-        def update_user_assets(asset_type: str, change_amount: int) -> str:
-            """更新资产 primogems|intertwined_fate|pity_count"""
-            return self.user_profile.update_assets(asset_type, change_amount)
+    def _save_pref(self, text: str) -> str:
+        return self.user_profile.save_preference(text)
 
-        def save_user_preference(text: str) -> str:
-            """保存偏好"""
-            return self.user_profile.save_preference(text)
+    async def _search(self, query: str) -> str:
+        from tools import search_web
+        t0 = time.time()
+        print(f"[{_ts()}]    🌐 网络搜索中 ...", flush=True)
+        result = await search_web(query)
+        result_count = result.count("[") // 2 if result else 0  # 粗略估计结果数
+        print(f"[{_ts()}]    🌐 搜索完成 ({time.time() - t0:.1f}s)", flush=True)
+        return result
 
-        async def search_web(query: str) -> str:
-            from tools import search_web as sf; return await sf(query)
+    async def _rag_query(self, query: str) -> tuple[str, str]:
+        """RAG 检索，返回 (文本, 来源引用)"""
+        if not self.query_engine:
+            return "", ""
+        import asyncio
+        t0 = time.time()
+        print(f"[{_ts()}]    📚 检索知识库 ...", flush=True)
+        try:
+            resp = await asyncio.wait_for(
+                asyncio.to_thread(self.query_engine.query, query),
+                timeout=AppConfig.RAG_TIMEOUT,
+            )
+            text = str(resp).strip()
+            node_count = len(resp.source_nodes) if hasattr(resp, "source_nodes") else 0
+            elapsed = time.time() - t0
+            print(f"[{_ts()}]    📚 检索完成 ({elapsed:.1f}s, {node_count} 条相关)", flush=True)
 
-        async def read_webpage(url: str) -> str:
-            from tools import read_webpage as rf; return await rf(url)
-
-        return [
-            FunctionTool.from_defaults(fn=get_user_profile),
-            FunctionTool.from_defaults(fn=update_user_assets),
-            FunctionTool.from_defaults(fn=save_user_preference),
-            FunctionTool.from_defaults(fn=search_web),
-            FunctionTool.from_defaults(fn=read_webpage),
-        ]
-
-    def _system_prompt(self):
-        t = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-        return f"""Current time: {t}
-You are Paimon from Genshin Impact. Speak in cute Chinese (派蒙语气).
-- Asset questions → call get_user_profile. NEVER guess numbers.
-- Use tool results to answer."""
+            sources = ""
+            if hasattr(resp, "source_nodes"):
+                parts = []
+                for i, n in enumerate(resp.source_nodes[:3]):
+                    title = n.metadata.get("title", "?")
+                    s = n.score or 0
+                    parts.append(f"  [{i+1}] {title} (相关度: {s:.0%})")
+                if parts:
+                    sources = "\n\n---\n📖 参考来源:\n" + "\n".join(parts)
+            return text, sources
+        except asyncio.TimeoutError:
+            print(f"[{_ts()}]    ⚠️ 检索超时 ({AppConfig.RAG_TIMEOUT}s)", flush=True)
+            return "", ""
+        except Exception as e:
+            print(f"[{_ts()}]    ❌ 检索出错: {e}", flush=True)
+            return "", ""
 
     # ── 意图分类 ──────────────────────────────────────────────
 
     async def _classify(self, query: str) -> str:
-        """快速分类意图"""
         prompt = f"""分类意图，只输出一个词：asset / lore / web / chat
 
 我有多少原石 → asset
 帮我抽卡建议 → asset
 钟离是谁 → lore
 七神分别是谁 → lore
-胡桃是什么角色 → lore
+原神最新卡池 → web
 原神最新活动 → web
 你好 → chat
 我喜欢胡桃 → chat
 我叫cc → chat
 
 {query} → """
-
         text = ""
-        for token in self.router_llm.stream_complete(prompt):
-            if token.delta:
-                text += token.delta
+        for token in self.router.stream_complete(prompt):
+            if token.delta: text += token.delta
         intent = text.strip().lower()
         for i in ["asset", "lore", "web", "chat"]:
-            if i in intent:
-                return i
+            if i in intent: return i
         return "chat"
 
-    # ── 流式对话 ──────────────────────────────────────────────
+    # ── Step 2: 执行工具 ──────────────────────────────────────
 
-    async def chat_stream(self, query: str) -> AsyncGenerator[str, None]:
-        if len(self.chat_history) > MAX_HISTORY_TURNS * 2:
-            self.chat_history = self.chat_history[-(MAX_HISTORY_TURNS * 2):]
+    async def _execute_tool(self, intent: str, query: str) -> tuple[str, str]:
+        """执行工具，返回 (工具结果文本, 来源引用)"""
 
-        intent = await self._classify(query)
-        print(f"[Agent] Intent: {intent} | {query[:40]}", flush=True)
-        logger.warning("Intent: %s → %s", intent, query[:60])
-
-        # ── 按意图路由 ──
         if intent == "asset":
-            async for token in self._handle_asset(query):
-                yield token
-        elif intent == "lore":
-            async for token in self._handle_lore(query):
-                yield token
+            return self._get_profile(), ""
+
         elif intent == "web":
-            async for token in self._handle_chat(query):  # chat 也会调 search_web
-                yield token
-        else:
-            async for token in self._handle_chat(query):
-                yield token
-
-    # ── 处理器 ────────────────────────────────────────────────
-
-    async def _handle_asset(self, query: str) -> AsyncGenerator[str, None]:
-        """资产查询 → FunctionAgent 调工具"""
-        try:
-            handler = self._function_agent.run(user_msg=query, chat_history=self.chat_history)
-            full = ""
-            async for ev in handler.stream_events():
-                if isinstance(ev, ToolCall):
-                    yield f"\n> 🔧 调用: **{ev.tool_name}**\n\n"
-                    print(f"[Agent] Tool: {ev.tool_name}", flush=True)
-                elif isinstance(ev, AgentStream) and ev.delta:
-                    full += ev.delta; yield ev.delta
-            await handler
-            self.chat_history.append(ChatMessage(role=MessageRole.USER, content=query))
-            self.chat_history.append(ChatMessage(role=MessageRole.ASSISTANT, content=full))
-        except Exception as e:
-            print(f"[Agent] Tool error: {e}", flush=True)
-            async for token in self._handle_chat(query):
-                yield token
-
-    async def _handle_lore(self, query: str) -> AsyncGenerator[str, None]:
-        """RAG 检索 → LLM 合成"""
-        rag_text = ""
-        sources = ""
-        if self.query_engine:
             try:
-                import asyncio
-                resp = await asyncio.wait_for(
-                    asyncio.to_thread(self.query_engine.query, query),
-                    timeout=5.0,
-                )
-                rag_text = str(resp).strip()
-                if hasattr(resp, "source_nodes"):
-                    parts = []
-                    for i, n in enumerate(resp.source_nodes[:3]):
-                        title = n.metadata.get("title", "?")
-                        s = n.score or 0
-                        parts.append(f"  [{i+1}] {title} (相关度: {s:.0%})")
-                    sources = "\n\n---\n📖 参考来源:\n" + "\n".join(parts)
-                print(f"[Agent] RAG: {len(rag_text)} chars", flush=True)
-            except asyncio.TimeoutError:
-                print("[Agent] RAG timeout, using LLM only", flush=True)
+                result = await self._search(query)
+                return result, ""
             except Exception as e:
-                print(f"[Agent] RAG error: {e}", flush=True)
+                print(f"[{_ts()}]    ❌ 搜索失败: {e}", flush=True)
+                return f"搜索失败: {e}", ""
 
-        context = f"\n[知识库参考]\n{rag_text}" if rag_text else ""
-        prompt = self._system_prompt() + f"\n根据以下资料回答旅行者的问题。\n{context}\n\n旅行者：{query}\n派蒙："
+        elif intent == "lore":
+            return await self._rag_query(query)
 
-        full = ""
-        for token in self.llm_manager.stream_complete(prompt):
-            full += token; yield token
-        if sources:
-            yield sources
+        return "", ""
 
-        self.chat_history.append(ChatMessage(role=MessageRole.USER, content=query))
-        self.chat_history.append(ChatMessage(role=MessageRole.ASSISTANT, content=full))
+    # ── Step 3: LLM 合成 ──────────────────────────────────────
 
-    async def _handle_chat(self, query: str) -> AsyncGenerator[str, None]:
-        """闲聊 → 直接 LLM（带历史）"""
+    def _build_prompt(self, query: str, tool_result: str, intent: str) -> str:
+        """构建合成 prompt"""
+        t = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+        base = f"""当前时间：{t}
+你是派蒙，原神中旅行者忠诚可爱的向导。用活泼热情的语气回答。"""
+
+        # 历史
         hist = ""
-        for msg in self.chat_history[-10:]:
+        for msg in self.chat_history[-20:]:
             role = "旅行者" if msg.role == MessageRole.USER else "派蒙"
             hist += f"{role}：{msg.content}\n"
 
-        prompt = f"{self._system_prompt()}\n\n对话历史：\n{hist}旅行者：{query}\n派蒙："
-        full = ""
-        for token in self.llm_manager.stream_complete(prompt):
-            full += token; yield token
+        if intent == "asset" and tool_result:
+            return f"{base}\n\n对话历史：\n{hist}\n[用户资产数据]\n{tool_result}\n\n旅行者问：{query}\n请根据真实数据回答，不要编造数字。\n派蒙："
+        elif intent == "web" and tool_result:
+            return f"{base}\n\n对话历史：\n{hist}\n[搜索结果]\n{tool_result}\n\n旅行者问：{query}\n请根据搜索结果回答。\n派蒙："
+        elif intent == "lore" and tool_result:
+            return f"{base}\n\n对话历史：\n{hist}\n[知识库资料]\n{tool_result}\n\n旅行者问：{query}\n请根据资料回答。\n派蒙："
+        else:
+            return f"{base}\n\n对话历史：\n{hist}\n旅行者：{query}\n派蒙："
 
+    # ── 主流程 ────────────────────────────────────────────────
+
+    async def chat_stream(self, query: str) -> AsyncGenerator[str, None]:
+        t_start = time.time()
+        # ── 控制台：请求分隔线 ──
+        print(f"\n{'─'*50}", flush=True)
+        print(f"[{_ts()}] 💬 旅行者: {query[:80]}{'...' if len(query) > 80 else ''}", flush=True)
+
+        if len(self.chat_history) > AppConfig.MAX_HISTORY_TURNS * 2:
+            self.chat_history = self.chat_history[-(AppConfig.MAX_HISTORY_TURNS * 2):]
+
+        # 立即给反馈，避免"卡住"的感觉
+        yield "> 💭 *思考中...*\n\n"
+
+        # ── Step 1: 意图分类 ──
+        t1 = time.time()
+        intent = await self._classify(query)
+        intent_emoji = {"asset": "📊", "lore": "📚", "web": "🌐", "chat": "💬"}.get(intent, "❓")
+        print(f"[{_ts()}] 🧠 Step 1/3 意图 → {intent_emoji} {intent} ({time.time() - t1:.1f}s)", flush=True)
+
+        # ── Step 2: 执行工具 ──
+        tool_result = ""
+        sources = ""
+        if intent != "chat":
+            t2 = time.time()
+            print(f"[{_ts()}] 🔧 Step 2/3 执行工具 ({intent}) ...", flush=True)
+            # UI 反馈
+            if intent == "web":
+                yield "> 🌐 正在搜索...\n\n"
+            elif intent == "lore":
+                yield "> 📚 正在检索知识库...\n\n"
+
+            try:
+                tool_result, sources = await self._execute_tool(intent, query)
+                if not tool_result:
+                    print(f"[{_ts()}]    ⚠️ 工具无结果 → 降级为 chat", flush=True)
+                    intent = "chat"
+                else:
+                    result_len = len(tool_result)
+                    print(f"[{_ts()}]    ✅ 工具完成 ({time.time() - t2:.1f}s, {result_len} 字符)", flush=True)
+            except Exception as e:
+                print(f"[{_ts()}]    ❌ 工具异常: {e}", flush=True)
+                intent = "chat"
+        else:
+            print(f"[{_ts()}] ⏭️  Step 2/3 跳过（聊天意图）", flush=True)
+
+        # ── Step 3: LLM 流式合成 ──
+        prompt = self._build_prompt(query, tool_result, intent)
+        full = ""
+        t3 = time.time()
+        print(f"[{_ts()}] 🤖 Step 3/3 LLM 流式合成中 ...", flush=True)
+
+        token_count = 0
+        for token in self.llm.stream_complete(prompt):
+            if token.delta:
+                full += token.delta
+                token_count += 1
+                yield token.delta
+
+        # 追加来源
+        if sources:
+            yield sources
+
+        elapsed_total = time.time() - t_start
+        print(f"[{_ts()}] ✅ 完成 → {intent} | {token_count} tokens | {elapsed_total:.1f}s 总计", flush=True)
+
+        # 保存历史
         self.chat_history.append(ChatMessage(role=MessageRole.USER, content=query))
         self.chat_history.append(ChatMessage(role=MessageRole.ASSISTANT, content=full))

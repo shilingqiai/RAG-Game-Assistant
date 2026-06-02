@@ -1,4 +1,4 @@
-"""Agent 工具创建和初始化测试"""
+"""Agent 创建和初始化测试"""
 import os
 import sys
 
@@ -28,20 +28,19 @@ class TestAgentCreation:
         assert GameAgent is not None
 
     def test_agent_init(self, llm_manager, user_profile):
-        """Agent 正常初始化"""
+        """Agent 正常初始化（手搓管道模式：router + llm + profile）"""
         from agent import GameAgent
         agent = GameAgent(llm_manager=llm_manager, user_profile=user_profile)
-        assert len(agent._tools) >= 5
+        assert agent.llm is not None
+        assert agent.user_profile is not None
+        assert agent.router is not None
         assert agent.chat_history == []
-        assert agent._function_agent is not None
 
-    def test_tools_have_names(self, llm_manager, user_profile):
-        """所有工具有名称"""
+    def test_agent_init_with_query_engine(self, llm_manager, user_profile):
+        """Agent 带可选 query_engine 初始化"""
         from agent import GameAgent
-        agent = GameAgent(llm_manager=llm_manager, user_profile=user_profile)
-        for tool in agent._tools:
-            assert tool.metadata.name, f"Tool {tool} has no name"
-            assert tool.metadata.description, f"Tool {tool.metadata.name} has no description"
+        agent = GameAgent(llm_manager=llm_manager, user_profile=user_profile, query_engine="mock_engine")
+        assert agent.query_engine == "mock_engine"
 
     def test_chat_history_management(self, llm_manager, user_profile):
         """对话历史管理"""
@@ -52,6 +51,16 @@ class TestAgentCreation:
         agent.chat_history.append(ChatMessage(role=MessageRole.USER, content="test"))
         agent.chat_history.append(ChatMessage(role=MessageRole.ASSISTANT, content="response"))
         assert len(agent.chat_history) == 2
+
+    def test_agent_methods_exist(self, llm_manager, user_profile):
+        """Agent 核心方法存在"""
+        from agent import GameAgent
+        agent = GameAgent(llm_manager=llm_manager, user_profile=user_profile)
+        assert callable(agent._classify)
+        assert callable(agent._execute_tool)
+        assert callable(agent._build_prompt)
+        assert callable(agent._get_profile)
+        assert callable(agent.chat_stream)
 
 
 class TestLLMManager:

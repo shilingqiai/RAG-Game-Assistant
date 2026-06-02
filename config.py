@@ -1,8 +1,29 @@
-"""用户配置和记忆管理模块 — 基于 SQLite 持久化"""
+"""用户配置和记忆管理模块 — 基于 SQLite 持久化 + 项目全局配置"""
 import sqlite3
 import logging
 
 logger = logging.getLogger("paimon.config")
+
+# ── 项目全局配置 ──────────────────────────────────────────────
+
+class AppConfig:
+    """统一管理模型名、超时、阈值，避免硬编码散落各处"""
+
+    # LLM
+    MAIN_MODEL = "qwen-max"
+    ROUTER_MODEL = "qwen-mt-flash"
+    EMBED_MODEL = "text-embedding-v4"
+
+    # 超时（秒）
+    RAG_TIMEOUT = 5.0
+    SEARCH_TIMEOUT = 10.0
+
+    # 阈值
+    RAG_MIN_SCORE = 0.05       # RAG 注入最低相关度
+    MAX_HISTORY_TURNS = 20     # 最大对话轮数
+
+    # 代理（需要时设环境变量，不硬编码）
+    HTTP_PROXY = None           # "http://127.0.0.1:12450"
 
 
 class UserProfile:

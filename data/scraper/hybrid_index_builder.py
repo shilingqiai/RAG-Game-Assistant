@@ -10,6 +10,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 import llm_manager  # noqa
+from config import AppConfig
 
 from llama_index.core import Document, VectorStoreIndex
 from llama_index.core.ingestion import IngestionPipeline
@@ -110,7 +111,7 @@ def build_documents() -> list[Document]:
 
 def build_hybrid_index(documents: list[Document]):
     api_key = os.getenv("DASHSCOPE_API_KEY")
-    embed_model = DashScopeEmbedding(model_name="text-embedding-v3", api_key=api_key, embed_batch_size=10)
+    embed_model = DashScopeEmbedding(model_name=AppConfig.EMBED_MODEL, api_key=api_key, embed_batch_size=10)
 
     pipeline = IngestionPipeline(transformations=[
         SentenceSplitter(chunk_size=512, chunk_overlap=128),

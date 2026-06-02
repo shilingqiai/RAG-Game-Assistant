@@ -1,59 +1,82 @@
 """RAG 检索质量测试"""
 import os
 import sys
-import json
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest
-from data_indexer import load_game_data, create_documents, clean_text
+from data_indexer import _split_entries, _load_characters, _load_world_lore
 
 
 @pytest.fixture
-def game_data():
-    """加载测试数据"""
-    data_path = os.path.join(
+def chars_path():
+    path = os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "data",
-        "genshin_impact_lore.json",
+        "data", "rag_texts", "characters.txt",
     )
-    if os.path.exists(data_path):
-        return load_game_data(data_path)
-    return []
+    if os.path.exists(path):
+        return path
+    return None
+
+
+@pytest.fixture
+def lore_path():
+    path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "data", "rag_texts", "world_lore.txt",
+    )
+    if os.path.exists(path):
+        return path
+    return None
 
 
 class TestDataLoading:
 
-    def test_data_file_exists(self):
-        """数据文件应存在"""
-        data_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "data",
-            "genshin_impact_lore.json",
-        )
-        assert os.path.exists(data_path), f"Data file not found: {data_path}"
+    def test_characters_file_exists(self, chars_path):
+        """角色文本文件应存在"""
+        assert chars_path is not None, "characters.txt not found"
+        assert os.path.exists(chars_path)
 
-    def test_load_game_data(self, game_data):
-        """加载游戏数据"""
-        assert len(game_data) > 0, "Game data should not be empty"
-        for item in game_data:
-            assert "title" in item
-            assert "content" in item
+    def test_world_lore_file_exists(self, lore_path):
+        """世界观文本文件应存在"""
+        assert lore_path is not None, "world_lore.txt not found"
+        assert os.path.exists(lore_path)
 
-    def test_create_documents(self, game_data):
-        """创建文档对象"""
-        if not game_data:
-            pytest.skip("No game data available")
-        docs = create_documents(game_data)
-        assert len(docs) == len(game_data)
+    def test_load_characters(self, chars_path):
+        """加载角色文档"""
+        if not chars_path:
+            pytest.skip("characters.txt not available")
+        docs = _load_characters(chars_path)
+        assert len(docs) > 0, "Should have character documents"
         for doc in docs:
             assert doc.text
-            assert doc.metadata["title"]
+            assert "title" in doc.metadata
+            assert doc.metadata["category"] == "character"
 
-    def test_clean_text(self):
-        """文本清理"""
-        assert clean_text("  hello   world  ") == "hello world"
-        assert clean_text("line1\n\nline2") == "line1 line2"
+    def test_load_world_lore(self, lore_path):
+        """加载世界观文档"""
+        if not lore_path:
+            pytest.skip("world_lore.txt not available")
+        docs = _load_world_lore(lore_path)
+        assert len(docs) > 0, "Should have lore documents"
+        for doc in docs:
+            assert doc.text
+            assert "title" in doc.metadata
+            assert doc.metadata["category"] == "lore"
+
+    def test_split_entries(self):
+        """条目分隔器"""
+        text = "标题：A\n\nContent A\n\n---\n\n标题：B\n\nContent B"
+        entries = _split_entries(text)
+        assert len(entries) == 2
+        assert "标题：A" in entries[0]
+        assert "标题：B" in entries[1]
+
+    def test_split_entries_single(self):
+        """单一条目"""
+        text = "角色：Test\n\n简介：Just a test"
+        entries = _split_entries(text)
+        assert len(entries) == 1
 
 
 class TestRAGRetrieval:

@@ -19,6 +19,7 @@ logging.basicConfig(
 from llama_index.core import Settings
 from llama_index.llms.dashscope import DashScope
 from llama_index.embeddings.dashscope import DashScopeEmbedding
+from config import AppConfig
 
 # 在模块导入时即设置嵌入模型，防止 LlamaIndex 回退到 OpenAI 默认值
 _SETTINGS_PATCHED = False
@@ -31,12 +32,12 @@ def _patch_settings():
         try:
             # 在模块导入时即注入 LLM 和嵌入模型，防止 LlamaIndex 回退到 OpenAI
             Settings.embed_model = DashScopeEmbedding(
-                model_name="text-embedding-v2",
+                model_name=AppConfig.EMBED_MODEL,
                 api_key=api_key,
                 embed_batch_size=10,
             )
             Settings.llm = DashScope(
-                model_name="qwen-max",
+                model_name=AppConfig.MAIN_MODEL,
                 temperature=0.1,
                 api_key=api_key,
                 max_tokens=2000,
@@ -61,7 +62,7 @@ class LLMManager:
 
         # 主 LLM（qwen-plus-2025-12-01）
         self.llm = DashScope(
-            model_name="qwen-max",
+            model_name=AppConfig.MAIN_MODEL,
             temperature=0.1,
             api_key=api_key,
             max_tokens=2000,
@@ -72,7 +73,7 @@ class LLMManager:
             Settings.embed_model
             if Settings.embed_model
             else DashScopeEmbedding(
-                model_name="text-embedding-v2",
+                model_name=AppConfig.EMBED_MODEL,
                 api_key=api_key,
                 embed_batch_size=10,
             )

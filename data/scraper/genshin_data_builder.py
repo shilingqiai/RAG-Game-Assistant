@@ -6,7 +6,8 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-import llm_manager  # noqa: 注入 Settings + text-embedding-v2
+import llm_manager  # noqa: 注入 Settings
+from config import AppConfig
 
 from llama_index.core import Document, VectorStoreIndex
 from llama_index.core.ingestion import IngestionPipeline
@@ -64,7 +65,7 @@ def build_documents():
 
 def build_index(documents, storage_dir="./storage"):
     api_key = os.getenv("DASHSCOPE_API_KEY")
-    embed_model = DashScopeEmbedding(model_name="text-embedding-v2", api_key=api_key, embed_batch_size=10)
+    embed_model = DashScopeEmbedding(model_name=AppConfig.EMBED_MODEL, api_key=api_key, embed_batch_size=10)
 
     pipeline = IngestionPipeline(transformations=[
         SentenceSplitter(chunk_size=512, chunk_overlap=128),
