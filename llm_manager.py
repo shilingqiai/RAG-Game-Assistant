@@ -3,12 +3,14 @@ import logging
 import os
 import sys
 
-# DashScope 是国内阿里云服务，不需要走代理。如果系统设了全局 HTTP_PROXY
-# 但代理软件没开，requests 会傻等 127.0.0.1:12451 直到超时。
-# 这里自动把 dashscope 域名加入 NO_PROXY，代理开不开都不影响。
-_no_proxy = os.getenv("NO_PROXY", "")
-if "dashscope.aliyuncs.com" not in _no_proxy:
-    os.environ["NO_PROXY"] = f"{_no_proxy},dashscope.aliyuncs.com" if _no_proxy else "dashscope.aliyuncs.com"
+# DashScope 是国内阿里云服务，直连即可。如果系统设了全局代理（Clash/V2Ray），
+# 代理会把 dashscope 流量也劫持，绕境外一圈回来反而超时。
+# 必须在 import 任何 HTTP 库之前把 ali 域名加入 NO_PROXY。
+# urllib3 用后缀匹配，所以 "aliyuncs.com" 就能覆盖所有子域名。
+for _key in ("NO_PROXY", "no_proxy"):
+    _existing = os.environ.get(_key, "")
+    if "aliyuncs.com" not in _existing:
+        os.environ[_key] = f"{_existing},aliyuncs.com" if _existing else "aliyuncs.com"
 
 # 统一日志配置（在所有模块之前执行）
 logging.basicConfig(
