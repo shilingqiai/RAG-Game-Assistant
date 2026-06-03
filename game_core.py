@@ -29,12 +29,13 @@ def _tokenize(text: str) -> list[str]:
 # ── 混合检索器 ----------------------------------------------------
 
 class HybridRetriever:
-    """向量检索 + BM25 关键词检索 → RRF 融合
+    """向量检索 + BM25 关键词检索 → RRF 融合 → qwen3-rerank 精排
 
     - 向量检索捕捉语义相似
     - BM25 捕捉精确关键词（人名、地名、术语）
     - RRF (Reciprocal Rank Fusion) 合并排序，无需调权重
     - 向量分数低于 min_score 的节点不进入融合（减少噪音）
+    - Reranker 对候选做精排，进一步提升 top-3 准确度
     """
 
     def __init__(self, vector_retriever, nodes, top_k=5, min_score=0.3):
@@ -46,6 +47,50 @@ class HybridRetriever:
         self._nodes = list(nodes)
         self._corpus = [_tokenize(n.get_content()) for n in self._nodes]
         self._bm25 = BM25Okapi(self._corpus) if self._corpus else None
+
+        # Reranker 状态
+        self._reranker_failures = 0
+        self._reranker_disabled = False
+
+    def _rerank(self, query: str, candidates: list) -> list[tuple]:
+        """qwen3-rerank 精排：返回 (node, rerank_score) 列表"""
+        if self._reranker_disabled or not candidates:
+            return [(node, vec_score) for node, vec_score, _ in candidates]
+
+        from dashscope import TextReRank
+
+        docs = [n.get_content() for n, _, _ in candidates]
+        try:
+            resp = TextReRank.call(
+                model=AppConfig.RERANK_MODEL,
+                query=query,
+                documents=docs,
+                top_n=min(len(docs), self._top_k),
+                api_key=os.getenv("DASHSCOPE_API_KEY"),
+            )
+            if resp.status_code != 200:
+                raise RuntimeError(f"Reranker API {resp.status_code}: {resp.message}")
+
+            results = resp.output.get("results", [])
+            scored = []
+            for r in results:
+                idx = r["index"]
+                if idx < len(candidates):
+                    node, vec_score, _ = candidates[idx]
+                    scored.append((node, r["relevance_score"]))
+
+            if scored:
+                logger.debug("Reranker: %d → %d results", len(candidates), len(scored))
+            return scored
+
+        except Exception as e:
+            self._reranker_failures += 1
+            logger.warning("Reranker failed (%d): %s", self._reranker_failures, e)
+            if self._reranker_failures >= 3:
+                self._reranker_disabled = True
+                logger.warning("Reranker disabled after 3 failures")
+            # 降级：返回原始 RRF 排序
+            return [(node, vec_score) for node, vec_score, _ in candidates]
 
     def retrieve(self, query) -> list[NodeWithScore]:
         """统一检索入口（兼容 str 和 QueryBundle）"""
@@ -71,7 +116,8 @@ class HybridRetriever:
                 indexed.sort(key=lambda x: x[1], reverse=True)
                 bm25_pairs = indexed[: self._top_k * 2]
 
-        # 3. RRF 融合 (k=60 是经典参数)
+        # 3. RRF 融合 (k=60 是经典参数) — 取更多候选给 reranker
+        rrf_top_n = self._top_k * 3 if AppConfig.RERANK_ENABLED else self._top_k
         K = 60
         rrf: dict[str, float] = {}
         node_map: dict[str, tuple] = {}  # node_id → (node, vec_score)
@@ -91,15 +137,29 @@ class HybridRetriever:
                 rrf[node.node_id] = 1.0 / (K + rank + 1)
                 node_map[node.node_id] = (node, 0.0)  # 仅 BM25 命中
 
-        # 4. 按 RRF 分数降序
-        sorted_ids = sorted(rrf.items(), key=lambda x: x[1], reverse=True)[
-            : self._top_k
-        ]
+        # 4. 按 RRF 分数降序，取候选
+        sorted_ids = sorted(rrf.items(), key=lambda x: x[1], reverse=True)[:rrf_top_n]
+        candidates = [
+            (node_map[nid][0], node_map[nid][1], rrf_score)
+            for nid, rrf_score in sorted_ids
+        ]  # (node, vec_score, rrf_score)
 
+        # 5. Reranker 精排（如果启用）
+        if AppConfig.RERANK_ENABLED and len(candidates) > self._top_k:
+            reranked = self._rerank(query_str, candidates)
+            if reranked:
+                candidates = reranked  # (node, rerank_score)
+            # 取 top_k
+            candidates = candidates[: self._top_k]
+
+        # 6. 构造结果
         results = []
-        for nid, rrf_score in sorted_ids:
-            node, vec_score = node_map[nid]
-            nws = NodeWithScore(node=node, score=vec_score)  # 展示用向量分数
+        for item in candidates:
+            if len(item) == 2:
+                node, score = item
+            else:
+                node, score = item[0], item[1]
+            nws = NodeWithScore(node=node, score=score)
             results.append(nws)
 
         return results

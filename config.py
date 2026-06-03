@@ -24,6 +24,11 @@ class AppConfig:
     RAG_CACHE_TTL = int(os.getenv("PAIMON_RAG_CACHE_TTL", "300"))  # 秒，0=禁用
     MAX_HISTORY_TURNS = int(os.getenv("PAIMON_MAX_HISTORY_TURNS", "20"))
 
+    # Reranker（精排）
+    RERANK_ENABLED = os.getenv("PAIMON_RERANK_ENABLED", "true").lower() not in ("0", "false", "no")
+    RERANK_MODEL = os.getenv("PAIMON_RERANK_MODEL", "qwen3-rerank")
+    RERANK_TIMEOUT = float(os.getenv("PAIMON_RERANK_TIMEOUT", "3.0"))
+
     # 代理
     HTTP_PROXY = os.getenv("HTTP_PROXY") or None
 
