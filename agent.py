@@ -86,19 +86,19 @@ class GameAgent:
     # ---- intent classify ---------------------------------------
 
     async def _classify(self, query: str) -> str:
-        prompt = f"""classify intent, output ONE word: asset / lore / web / chat
+        prompt = f"""分类意图，只输出一个词：asset / lore / web / chat
 
-how many primogems do I have -> asset
-gacha pull advice -> asset
-who is Zhongli -> lore
-who are The Seven -> lore
-latest Genshin banner -> web
-latest event -> web
-hello -> chat
-I like Hu Tao -> chat
-my name is cc -> chat
+我有多少原石 → asset
+帮我抽卡建议 → asset
+钟离是谁 → lore
+七神分别是谁 → lore
+原神最新卡池 → web
+原神最新活动 → web
+你好 → chat
+我喜欢胡桃 → chat
+我叫cc → chat
 
-{query} -> """
+{query} → """
         try:
             text = ""
             for token in self.router.stream_complete(prompt):
@@ -133,33 +133,22 @@ my name is cc -> chat
 
     def _build_prompt(self, query: str, tool_result: str, intent: str) -> str:
         t = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-        base = (f"current time: {t}\n"
-                f"You are Paimon, the loyal and adorable guide from Genshin Impact. "
-                f"Answer in a lively, enthusiastic tone.")
+        base = f"""当前时间：{t}
+你是派蒙，原神中旅行者忠诚可爱的向导。用活泼热情的语气回答。"""
 
         hist = ""
         for msg in self.chat_history[-20:]:
-            role = "Traveler" if msg.role == MessageRole.USER else "Paimon"
-            hist += f"{role}: {msg.content}\n"
+            role = "旅行者" if msg.role == MessageRole.USER else "派蒙"
+            hist += f"{role}：{msg.content}\n"
 
         if intent == "asset" and tool_result:
-            return (f"{base}\n\nchat history:\n{hist}\n"
-                    f"[user assets]\n{tool_result}\n\n"
-                    f"Traveler asks: {query}\n"
-                    f"Answer based on real data, do not make up numbers.\nPaimon:")
+            return f"{base}\n\n对话历史：\n{hist}\n[用户资产数据]\n{tool_result}\n\n旅行者问：{query}\n请根据真实数据回答，不要编造数字。\n派蒙："
         elif intent == "web" and tool_result:
-            return (f"{base}\n\nchat history:\n{hist}\n"
-                    f"[search results]\n{tool_result}\n\n"
-                    f"Traveler asks: {query}\n"
-                    f"Answer based on search results.\nPaimon:")
+            return f"{base}\n\n对话历史：\n{hist}\n[搜索结果]\n{tool_result}\n\n旅行者问：{query}\n请根据搜索结果回答。\n派蒙："
         elif intent == "lore" and tool_result:
-            return (f"{base}\n\nchat history:\n{hist}\n"
-                    f"[knowledge base]\n{tool_result}\n\n"
-                    f"Traveler asks: {query}\n"
-                    f"Answer based on the provided data.\nPaimon:")
+            return f"{base}\n\n对话历史：\n{hist}\n[知识库资料]\n{tool_result}\n\n旅行者问：{query}\n请根据资料回答。\n派蒙："
         else:
-            return (f"{base}\n\nchat history:\n{hist}\n"
-                    f"Traveler: {query}\nPaimon:")
+            return f"{base}\n\n对话历史：\n{hist}\n旅行者：{query}\n派蒙："
 
     # ---- main flow -------------------------------------------
 
@@ -172,7 +161,7 @@ my name is cc -> chat
             if len(self.chat_history) > AppConfig.MAX_HISTORY_TURNS * 2:
                 self.chat_history = self.chat_history[-(AppConfig.MAX_HISTORY_TURNS * 2):]
 
-        yield "> thinking...\n\n"
+        yield "> 思考中...\n\n"
 
         # Step 1: intent
         t1 = time.time()
@@ -186,9 +175,9 @@ my name is cc -> chat
             t2 = time.time()
             print(f"[{_ts()}] Step2 exec tool ({intent}) ...", flush=True)
             if intent == "web":
-                yield "> searching the web...\n\n"
+                yield "> 正在搜索网络...\n\n"
             elif intent == "lore":
-                yield "> searching knowledge base...\n\n"
+                yield "> 正在检索知识库...\n\n"
 
             try:
                 tool_result, sources = await self._execute_tool(intent, query)
