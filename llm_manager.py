@@ -3,7 +3,12 @@ import logging
 import os
 import sys
 
-# 代理配置（从环境变量读取，不硬编码。需要时：set HTTP_PROXY=http://127.0.0.1:12451）
+# DashScope 是国内阿里云服务，不需要走代理。如果系统设了全局 HTTP_PROXY
+# 但代理软件没开，requests 会傻等 127.0.0.1:12451 直到超时。
+# 这里自动把 dashscope 域名加入 NO_PROXY，代理开不开都不影响。
+_no_proxy = os.getenv("NO_PROXY", "")
+if "dashscope.aliyuncs.com" not in _no_proxy:
+    os.environ["NO_PROXY"] = f"{_no_proxy},dashscope.aliyuncs.com" if _no_proxy else "dashscope.aliyuncs.com"
 
 # 统一日志配置（在所有模块之前执行）
 logging.basicConfig(
