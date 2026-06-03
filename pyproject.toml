@@ -41,12 +41,14 @@ paimon = "simple_start:main"
 paimon-index = "data_indexer:main"
 paimon-eval = "eval_intent:main"
 paimon-eval-rag = "eval_rag:main"
+paimon-index-cn = "data_indexer_cn:main"
 
 [tool.setuptools]
 py-modules = [
     "agent",
     "config",
     "data_indexer",
+    "data_indexer_cn",
     "eval_intent",
     "eval_rag",
     "game_core",

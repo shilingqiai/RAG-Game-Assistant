@@ -17,3 +17,4 @@ data/processed/genshin_data.db
 *.egg-info/
 RESUME.md
 ARCHITECTURE.md
+storage_en/
