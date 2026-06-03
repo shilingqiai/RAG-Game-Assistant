@@ -22,6 +22,7 @@ class GameAgent:
         self.query_engine = query_engine
         self.chat_history: List[ChatMessage] = []
         self._history_lock = asyncio.Lock()
+        self._memory_summary: str = ""  # 历史对话摘要（旧轮次压缩结果）
 
         from llama_index.llms.dashscope import DashScope
         self.router = DashScope(model_name=AppConfig.ROUTER_MODEL, temperature=0,
@@ -64,6 +65,12 @@ class GameAgent:
             text = str(resp).strip()
             node_count = len(resp.source_nodes) if hasattr(resp, "source_nodes") else 0
             elapsed = time.time() - t0
+
+            # 无相关节点 → 不编造答案
+            if node_count == 0:
+                print(f"[{_ts()}]    [rag] done ({elapsed:.1f}s, 0 nodes -> fallback)", flush=True)
+                return "", ""
+
             print(f"[{_ts()}]    [rag] done ({elapsed:.1f}s, {node_count} nodes)", flush=True)
 
             sources = ""
@@ -72,7 +79,10 @@ class GameAgent:
                 for i, n in enumerate(resp.source_nodes[:3]):
                     title = n.metadata.get("title", "?")
                     s = n.score or 0
-                    parts.append(f"  [{i+1}] {title} (relevance: {s:.0%})")
+                    if s > 0:
+                        parts.append(f"  [{i+1}] {title} (相关度: {s:.0%})")
+                    else:
+                        parts.append(f"  [{i+1}] {title} (关键词匹配)")
                 if parts:
                     sources = "\n\n---\nSources:\n" + "\n".join(parts)
             return text, sources
@@ -86,28 +96,37 @@ class GameAgent:
     # ---- intent classify ---------------------------------------
 
     async def _classify(self, query: str) -> str:
-        prompt = f"""分类意图，只输出一个词：asset / lore / web / chat
+        prompt = f"""你是一个意图分类器。分析用户消息，只输出一个词：asset / lore / web / chat
 
+意图说明：
+- asset：用户查询自己的库存（原石、纠缠之缘、抽卡次数、垫水位），不是问角色
+- lore：询问角色设定、世界观、剧情、背景故事（即使问"怎么获得"也是问设定）
+- web：需要最新网络信息（卡池、活动、兑换码、版本更新）
+- chat：闲聊、表达感受、无明确查询目标、问AI能力
+
+示例：
 我有多少原石 → asset
-帮我抽卡建议 → asset
+垫了多少抽 → asset
 钟离是谁 → lore
-七神分别是谁 → lore
+胡桃是什么角色 → lore
+神之眼怎么获得 → lore
+原神有哪些国家 → lore
 原神最新卡池 → web
-原神最新活动 → web
+最新兑换码 → web
 你好 → chat
+你会什么 → chat
 我喜欢胡桃 → chat
-我叫cc → chat
 
 {query} → """
         try:
-            text = ""
-            for token in self.router.stream_complete(prompt):
-                if token.delta:
-                    text += token.delta
-            intent = text.strip().lower()
+            import asyncio as _asyncio
+            resp = await _asyncio.to_thread(self.router.complete, prompt)
+            text = str(resp).strip().lower()
+            # 精确匹配（先完全匹配，再前缀匹配）
             for i in ["asset", "lore", "web", "chat"]:
-                if i in intent:
+                if text == i or text.startswith(i):
                     return i
+            print(f"[{_ts()}]    [warn] router unexpected: {text!r} -> fallback chat", flush=True)
             return "chat"
         except Exception as e:
             print(f"[{_ts()}]    [warn] router failed: {e} -> fallback chat", flush=True)
@@ -136,19 +155,49 @@ class GameAgent:
         base = f"""当前时间：{t}
 你是派蒙，原神中旅行者忠诚可爱的向导。用活泼热情的语气回答。"""
 
+        # 历史摘要（压缩的旧对话）
+        summary_block = ""
+        if self._memory_summary:
+            summary_block = f"\n[更早的对话摘要]\n{self._memory_summary}\n"
+
         hist = ""
         for msg in self.chat_history[-20:]:
             role = "旅行者" if msg.role == MessageRole.USER else "派蒙"
             hist += f"{role}：{msg.content}\n"
 
         if intent == "asset" and tool_result:
-            return f"{base}\n\n对话历史：\n{hist}\n[用户资产数据]\n{tool_result}\n\n旅行者问：{query}\n请根据真实数据回答，不要编造数字。\n派蒙："
+            return f"{base}\n{summary_block}\n对话历史：\n{hist}\n[用户资产数据]\n{tool_result}\n\n旅行者问：{query}\n请根据真实数据回答，不要编造数字。\n派蒙："
         elif intent == "web" and tool_result:
-            return f"{base}\n\n对话历史：\n{hist}\n[搜索结果]\n{tool_result}\n\n旅行者问：{query}\n请根据搜索结果回答。\n派蒙："
+            return f"{base}\n{summary_block}\n对话历史：\n{hist}\n[搜索结果]\n{tool_result}\n\n旅行者问：{query}\n请根据搜索结果回答。\n派蒙："
         elif intent == "lore" and tool_result:
-            return f"{base}\n\n对话历史：\n{hist}\n[知识库资料]\n{tool_result}\n\n旅行者问：{query}\n请根据资料回答。\n派蒙："
+            return f"{base}\n{summary_block}\n对话历史：\n{hist}\n[知识库资料]\n{tool_result}\n\n旅行者问：{query}\n请根据资料回答。\n派蒙："
         else:
-            return f"{base}\n\n对话历史：\n{hist}\n旅行者：{query}\n派蒙："
+            return f"{base}\n{summary_block}\n对话历史：\n{hist}\n旅行者：{query}\n派蒙："
+
+    # ---- memory management -----------------------------------
+
+    async def _summarize_history(self, messages: list[ChatMessage]) -> str:
+        """用 LLM 将旧对话压缩为一句话摘要，保留关键信息"""
+        dialog = ""
+        for msg in messages:
+            role = "旅行者" if msg.role == MessageRole.USER else "派蒙"
+            dialog += f"{role}：{msg.content}\n"
+
+        prompt = f"""用一段话总结以下对话的关键信息（用户偏好、提到的事实、重要上下文）。只输出摘要，不加前缀：
+
+{dialog}
+
+摘要："""
+        try:
+            import asyncio as _asyncio
+            resp = await _asyncio.to_thread(self.llm.complete, prompt)
+            summary = str(resp).strip()
+            if summary:
+                print(f"[{_ts()}]    [mem] summarized {len(messages)} msgs -> {len(summary)} chars", flush=True)
+                return summary
+        except Exception as e:
+            print(f"[{_ts()}]    [warn] summarization failed: {e}", flush=True)
+        return ""
 
     # ---- main flow -------------------------------------------
 
@@ -158,8 +207,20 @@ class GameAgent:
         print(f"[{_ts()}] Q: {query[:80]}{'...' if len(query) > 80 else ''}", flush=True)
 
         async with self._history_lock:
-            if len(self.chat_history) > AppConfig.MAX_HISTORY_TURNS * 2:
-                self.chat_history = self.chat_history[-(AppConfig.MAX_HISTORY_TURNS * 2):]
+            max_msgs = AppConfig.MAX_HISTORY_TURNS * 2
+            if len(self.chat_history) > max_msgs:
+                # 把最早的 N 条压缩为摘要，保留最近的轮次
+                overflow = len(self.chat_history) - max_msgs + 4  # 多取 2 轮一起压缩
+                old = self.chat_history[:overflow]
+                recent = self.chat_history[overflow:]
+                summary = await self._summarize_history(old)
+                if summary:
+                    # 合并：新摘要追加到旧摘要后面
+                    if self._memory_summary:
+                        self._memory_summary = f"{self._memory_summary}\n{summary}"
+                    else:
+                        self._memory_summary = summary
+                self.chat_history = recent
 
         yield "> 思考中...\n\n"
 

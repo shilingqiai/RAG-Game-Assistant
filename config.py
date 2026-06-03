@@ -15,12 +15,12 @@ class AppConfig:
     EMBED_MODEL = os.getenv("PAIMON_EMBED_MODEL", "text-embedding-v4")
 
     # 超时（秒）
-    RAG_TIMEOUT = float(os.getenv("PAIMON_RAG_TIMEOUT", "5.0"))
+    RAG_TIMEOUT = float(os.getenv("PAIMON_RAG_TIMEOUT", "7.0"))
     SEARCH_TIMEOUT = float(os.getenv("PAIMON_SEARCH_TIMEOUT", "10.0"))
 
     # 检索
     RETRIEVAL_TOP_K = int(os.getenv("PAIMON_RETRIEVAL_TOP_K", "5"))
-    RAG_MIN_SCORE = float(os.getenv("PAIMON_RAG_MIN_SCORE", "0.05"))
+    RAG_MIN_SCORE = float(os.getenv("PAIMON_RAG_MIN_SCORE", "0.30"))
     RAG_CACHE_TTL = int(os.getenv("PAIMON_RAG_CACHE_TTL", "300"))  # 秒，0=禁用
     MAX_HISTORY_TURNS = int(os.getenv("PAIMON_MAX_HISTORY_TURNS", "20"))
 

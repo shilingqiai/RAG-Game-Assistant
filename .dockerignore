@@ -1,0 +1,40 @@
+# Python
+venv/
+env/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+
+# Git
+.git/
+.gitmodules
+.trae/
+
+# IDE
+.vscode/
+.idea/
+
+# Data
+data/genshin-data/
+
+# Storage (built at runtime or mounted)
+storage/
+storage_en/
+user_profile.db
+
+# Logs
+*.log
+
+# Docs
+RESUME.md
+ARCHITECTURE.md
+
+# Env
+.env
+.env.local
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore

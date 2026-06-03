@@ -1,0 +1,42 @@
+# Paimon Companion — 一键启动
+#
+# 使用前:
+#   1. 复制 .env.example 为 .env，填入 DASHSCOPE_API_KEY
+#   2. docker compose up -d
+#   3. 打开 http://localhost:7860
+
+services:
+  paimon:
+    build: .
+    image: paimon:latest
+    container_name: paimon-companion
+    ports:
+      - "7860:7860"
+    env_file:
+      - .env
+    environment:
+      # 以下可覆盖 .env 中的值
+      - PAIMON_MAIN_MODEL=${PAIMON_MAIN_MODEL:-qwen-max}
+      - PAIMON_ROUTER_MODEL=${PAIMON_ROUTER_MODEL:-qwen-mt-flash}
+      - PAIMON_EMBED_MODEL=${PAIMON_EMBED_MODEL:-text-embedding-v4}
+      - PAIMON_RAG_TIMEOUT=${PAIMON_RAG_TIMEOUT:-5.0}
+      - PAIMON_RETRIEVAL_TOP_K=${PAIMON_RETRIEVAL_TOP_K:-5}
+      - PAIMON_RAG_MIN_SCORE=${PAIMON_RAG_MIN_SCORE:-0.30}
+      - PAIMON_RAG_CACHE_TTL=${PAIMON_RAG_CACHE_TTL:-300}
+      - NO_PROXY=aliyuncs.com
+      - no_proxy=aliyuncs.com
+    volumes:
+      # 持久化向量索引和用户数据
+      - ./storage:/app/storage
+      - ./user_profile.db:/app/user_profile.db
+      - paimon-logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:7860')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  paimon-logs:

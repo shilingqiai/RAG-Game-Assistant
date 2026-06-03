@@ -28,6 +28,7 @@ dependencies = [
     "duckduckgo-search>=8.0.0",
     "httpx>=0.25.0",
     "dashscope>=1.20.0",
+    "rank-bm25>=0.2.0",
 ]
 
 [project.optional-dependencies]
