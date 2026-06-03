@@ -1,5 +1,5 @@
 """Agent — 3-stage pipeline: intent routing -> tool execution -> LLM synthesis"""
-import asyncio, datetime, logging, sys, time
+import asyncio, datetime, logging, queue, sys, threading, time
 from typing import AsyncGenerator, List, Optional
 
 from llama_index.core.base.llms.types import ChatMessage, MessageRole
@@ -254,18 +254,38 @@ class GameAgent:
         else:
             print(f"[{_ts()}] Step2 skip (chat intent)", flush=True)
 
-        # Step 3: LLM synthesis
+        # Step 3: LLM synthesis（线程桥接：同步 stream → 异步 yield）
         prompt = self._build_prompt(query, tool_result, intent)
         full = ""
         t3 = time.time()
         print(f"[{_ts()}] Step3 LLM streaming ...", flush=True)
 
         token_count = 0
-        for token in self.llm.stream_complete(prompt):
-            if token.delta:
-                full += token.delta
-                token_count += 1
-                yield token.delta
+        token_queue: queue.Queue = queue.Queue()
+
+        def _run_stream():
+            try:
+                for token in self.llm.stream_complete(prompt):
+                    if token.delta:
+                        token_queue.put(("token", token.delta))
+            except Exception as e:
+                token_queue.put(("error", str(e)))
+            token_queue.put(("done", None))
+
+        stream_thread = threading.Thread(target=_run_stream, daemon=True)
+        stream_thread.start()
+
+        while True:
+            msg_type, payload = await asyncio.to_thread(token_queue.get)
+            if msg_type == "done":
+                break
+            if msg_type == "error":
+                full += f"\n\n❌ LLM 调用失败: {payload}"
+                yield full
+                break
+            full += payload
+            token_count += 1
+            yield payload
 
         if sources:
             yield sources
