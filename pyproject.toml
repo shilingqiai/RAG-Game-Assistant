@@ -29,6 +29,8 @@ dependencies = [
     "httpx>=0.25.0",
     "dashscope>=1.20.0",
     "rank-bm25>=0.2.0",
+    "fastapi>=0.109.0",
+    "uvicorn>=0.27.0",
 ]
 
 [project.optional-dependencies]
@@ -43,6 +45,7 @@ paimon-index = "data_indexer:main"
 paimon-eval = "eval_intent:main"
 paimon-eval-rag = "eval_rag:main"
 paimon-index-cn = "data_indexer_cn:main"
+paimon-serve = "server:main"
 
 [tool.setuptools]
 py-modules = [
@@ -54,6 +57,7 @@ py-modules = [
     "eval_rag",
     "game_core",
     "llm_manager",
+    "server",
     "simple_start",
     "tools",
 ]
