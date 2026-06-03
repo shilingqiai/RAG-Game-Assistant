@@ -14,3 +14,6 @@ paimon_debug.log
 data/genshin-data/
 data/raw/dimbreath/
 data/processed/genshin_data.db
+*.egg-info/
+RESUME.md
+ARCHITECTURE.md

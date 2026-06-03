@@ -1,5 +1,5 @@
 """Agent — 手搓三步：意图路由 → 执行工具 → LLM 合成（无 FunctionAgent）"""
-import datetime, logging, sys, time
+import asyncio, datetime, logging, sys, time
 from typing import AsyncGenerator, List, Optional
 
 from llama_index.core.base.llms.types import ChatMessage, MessageRole
@@ -22,6 +22,7 @@ class GameAgent:
         self.user_profile = user_profile
         self.query_engine = query_engine
         self.chat_history: List[ChatMessage] = []
+        self._history_lock = asyncio.Lock()  # 防止并发请求损坏对话历史
 
         # 意图路由器
         from llama_index.llms.dashscope import DashScope
@@ -102,13 +103,17 @@ class GameAgent:
 我叫cc → chat
 
 {query} → """
-        text = ""
-        for token in self.router.stream_complete(prompt):
-            if token.delta: text += token.delta
-        intent = text.strip().lower()
-        for i in ["asset", "lore", "web", "chat"]:
-            if i in intent: return i
-        return "chat"
+        try:
+            text = ""
+            for token in self.router.stream_complete(prompt):
+                if token.delta: text += token.delta
+            intent = text.strip().lower()
+            for i in ["asset", "lore", "web", "chat"]:
+                if i in intent: return i
+            return "chat"
+        except Exception as e:
+            print(f"[{_ts()}]    ⚠️ 路由模型调用失败: {e} → 降级为 chat", flush=True)
+            return "chat"
 
     # ── Step 2: 执行工具 ──────────────────────────────────────
 
@@ -162,8 +167,9 @@ class GameAgent:
         print(f"\n{'─'*50}", flush=True)
         print(f"[{_ts()}] 💬 旅行者: {query[:80]}{'...' if len(query) > 80 else ''}", flush=True)
 
-        if len(self.chat_history) > AppConfig.MAX_HISTORY_TURNS * 2:
-            self.chat_history = self.chat_history[-(AppConfig.MAX_HISTORY_TURNS * 2):]
+        async with self._history_lock:
+            if len(self.chat_history) > AppConfig.MAX_HISTORY_TURNS * 2:
+                self.chat_history = self.chat_history[-(AppConfig.MAX_HISTORY_TURNS * 2):]
 
         # 立即给反馈，避免"卡住"的感觉
         yield "> 💭 *思考中...*\n\n"
@@ -220,6 +226,7 @@ class GameAgent:
         elapsed_total = time.time() - t_start
         print(f"[{_ts()}] ✅ 完成 → {intent} | {token_count} tokens | {elapsed_total:.1f}s 总计", flush=True)
 
-        # 保存历史
-        self.chat_history.append(ChatMessage(role=MessageRole.USER, content=query))
-        self.chat_history.append(ChatMessage(role=MessageRole.ASSISTANT, content=full))
+        # 保存历史（加锁防并发）
+        async with self._history_lock:
+            self.chat_history.append(ChatMessage(role=MessageRole.USER, content=query))
+            self.chat_history.append(ChatMessage(role=MessageRole.ASSISTANT, content=full))

@@ -5,6 +5,9 @@ os.environ["PYTHONIOENCODING"] = "utf-8"
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
+import llm_manager  # noqa: 注入 Settings.embed_model，防止 LlamaIndex 回退到 OpenAI
+from config import AppConfig
+
 from llama_index.core import (
     VectorStoreIndex,
     Document,
@@ -13,7 +16,6 @@ from llama_index.core import (
 )
 from llama_index.core.text_splitter import SentenceSplitter
 from llama_index.embeddings.dashscope import DashScopeEmbedding
-from config import AppConfig
 
 
 def _split_entries(text: str) -> list[str]:

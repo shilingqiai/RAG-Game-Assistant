@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "paimon-companion"
+version = "0.3.0"
+description = "🎒 原神智能游戏伴侣 — 多模态 RAG 对话 Agent，融合意图路由、向量检索与实时搜索"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [{name = "Shilingqiai"}]
+keywords = ["genshin-impact", "rag", "llm", "agent", "chatbot", "llamaindex", "qwen"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+requires-python = ">=3.10"
+dependencies = [
+    "llama-index-core>=0.10.57",
+    "llama-index-llms-dashscope>=0.5.0",
+    "llama-index-embeddings-dashscope>=0.5.0",
+    "gradio>=4.0.0",
+    "duckduckgo-search>=8.0.0",
+    "httpx>=0.25.0",
+    "dashscope>=1.20.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+]
+
+[project.scripts]
+paimon = "simple_start:main"
+paimon-index = "data_indexer:main"
+paimon-eval = "eval_intent:main"
+paimon-eval-rag = "eval_rag:main"
+
+[tool.setuptools]
+py-modules = [
+    "agent",
+    "config",
+    "data_indexer",
+    "eval_intent",
+    "eval_rag",
+    "game_core",
+    "llm_manager",
+    "simple_start",
+    "tools",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

@@ -102,3 +102,26 @@ class TestRAGRetrieval:
         result = companion.query_lore("原神")
         assert isinstance(result, str)
         assert len(result) > 0
+
+    def test_query_lore_cache_hit(self, companion):
+        """缓存命中：相同查询第二次应使用缓存"""
+        if not companion.query_engine:
+            pytest.skip("RAG index not available")
+        # 清空缓存
+        companion._rag_cache.clear()
+        # 第一次查询 — 写入缓存
+        result1 = companion.query_lore("钟离")
+        assert len(result1) > 0
+        assert len(companion._rag_cache) == 1
+        # 第二次相同查询 — 缓存命中
+        result2 = companion.query_lore("钟离")
+        assert result1 == result2  # 缓存返回相同结果
+
+    def test_query_lore_cache_different_keys(self, companion):
+        """不同查询应有不同缓存键"""
+        if not companion.query_engine:
+            pytest.skip("RAG index not available")
+        companion._rag_cache.clear()
+        companion.query_lore("钟离")
+        companion.query_lore("温迪")
+        assert len(companion._rag_cache) == 2
